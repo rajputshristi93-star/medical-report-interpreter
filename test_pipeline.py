@@ -1,10 +1,14 @@
+import sys
 import pandas as pd
 from extractor import extract_text
-from interpreter import extract_results, explain_results
+from interpreter import extract_results, explain_results, verify_against_text
 from rules import add_status
 
-text = extract_text("samples/cbc_low_hb.pdf")
-results = add_status(extract_results(text))
+path = sys.argv[1] if len(sys.argv) > 1 else "samples/cbc_low_hb.pdf"
+text = extract_text(path)
+results = add_status(verify_against_text(extract_results(text), text))
 
+pd.set_option("display.width", 200)
+pd.set_option("display.max_columns", None)
 print(pd.DataFrame(results))
 print("\n" + explain_results(results))
