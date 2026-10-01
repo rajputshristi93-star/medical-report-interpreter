@@ -5,12 +5,18 @@ from extractor import extract_text, looks_scanned
 from interpreter import extract_results, explain_results, verify_against_text
 from rules import add_status
 
+MAX_MB = 5
+
 st.set_page_config(page_title="AI Medical Report Interpreter", page_icon="🩺", layout="wide")
 
 st.title("🩺 AI Medical Report Interpreter")
 st.warning(
     "For information only. This tool does not diagnose or give medical advice. "
     "Always discuss your results with a doctor."
+)
+st.caption(
+    "Privacy: your file is processed in memory and is not saved by this app. "
+    "The extracted text is sent to an AI service (Google Gemini or Groq) to generate the explanation."
 )
 
 STATUS_COLORS = {
@@ -48,7 +54,13 @@ def build_table(results):
 uploaded = st.file_uploader("Upload a lab report (PDF)", type=["pdf"])
 
 if uploaded is None:
+    st.session_state.pop("results", None)
+    st.session_state.pop("explanation", None)
     st.info("Upload a text-based PDF lab report to get started.")
+    st.stop()
+
+if uploaded.size > MAX_MB * 1024 * 1024:
+    st.error(f"This file is too large. Please upload a PDF under {MAX_MB} MB.")
     st.stop()
 
 if st.button("Interpret report", type="primary"):
@@ -85,7 +97,7 @@ if "results" in st.session_state:
 
     st.subheader("Your results")
     table = build_table(results)
-    st.dataframe(table.style.map(color_status, subset=["Status"]), use_container_width=True, hide_index=True)
+    st.dataframe(table.style.map(color_status, subset=["Status"]), width="stretch", hide_index=True)
 
     if any(r.get("flag") == "extreme" for r in results):
         st.error("One or more values are far outside the reference range. This could be a typing or lab error, or a significant finding. Please contact a doctor promptly.")
