@@ -1,11 +1,18 @@
+import io
+
 import pandas as pd
 import streamlit as st
 
 from extractor import extract_text, looks_scanned
-from interpreter import extract_results, explain_results, verify_against_text
+from interpreter import (
+    explain_results,
+    extract_results,
+    extract_results_from_file,
+    verify_against_text,
+)
 from rules import add_status
 
-MAX_MB = 5
+MAX_MB = 10
 
 st.set_page_config(page_title="AI Medical Report Interpreter", page_icon="🩺", layout="wide")
 
@@ -16,7 +23,7 @@ st.warning(
 )
 st.caption(
     "Privacy: your file is processed in memory and is not saved by this app. "
-    "The extracted text is sent to an AI service (Google Gemini or Groq) to generate the explanation."
+    "The file or its extracted text is sent to an AI service (Google Gemini, or Groq for text) to generate the results."
 )
 
 STATUS_COLORS = {
@@ -31,13 +38,22 @@ def color_status(val):
     return STATUS_COLORS.get(val, "")
 
 
+def get_mime(filename):
+    name = filename.lower()
+    if name.endswith(".pdf"):
+        return "application/pdf"
+    if name.endswith(".png"):
+        return "image/png"
+    return "image/jpeg"
+
+
 def build_table(results):
     rows = []
     for r in results:
         notes = []
         if r.get("flag") == "extreme":
             notes.append("Far outside range - verify and contact a doctor")
-        if not r.get("verified"):
+        if r.get("verified") is False:
             notes.append("Value not found in report text - check manually")
         rows.append({
             "Test": r.get("test"),
@@ -51,32 +67,43 @@ def build_table(results):
     return pd.DataFrame(rows)
 
 
-uploaded = st.file_uploader("Upload a lab report (PDF)", type=["pdf"])
+uploaded = st.file_uploader("Upload a lab report (PDF or image)", type=["pdf", "png", "jpg", "jpeg"])
 
 if uploaded is None:
     st.session_state.pop("results", None)
     st.session_state.pop("explanation", None)
-    st.info("Upload a text-based PDF lab report to get started.")
+    st.info("Upload a lab report as a PDF, or a clear photo or screenshot, to get started.")
     st.stop()
 
 if uploaded.size > MAX_MB * 1024 * 1024:
-    st.error(f"This file is too large. Please upload a PDF under {MAX_MB} MB.")
+    st.error(f"This file is too large. Please upload a file under {MAX_MB} MB.")
     st.stop()
 
 if st.button("Interpret report", type="primary"):
     try:
-        with st.spinner("Reading your report..."):
-            text = extract_text(uploaded)
+        data = uploaded.getvalue()
+        mime = get_mime(uploaded.name)
+        text = ""
+        from_file = mime != "application/pdf"  # images always go straight to the AI
 
-        if looks_scanned(text):
-            st.error("This looks like a scanned or image-only PDF. Text extraction for scans is not supported yet.")
-            st.stop()
+        if not from_file:
+            with st.spinner("Reading your report..."):
+                text = extract_text(io.BytesIO(data))
+            from_file = looks_scanned(text)  # scanned PDF: no text layer
 
-        with st.spinner("Extracting results..."):
-            results = add_status(verify_against_text(extract_results(text), text))
+        with st.spinner("Extracting results (long reports can take a minute)..."):
+            if from_file:
+                results = extract_results_from_file(data, mime)
+            else:
+                results = verify_against_text(extract_results(text), text)
+            results = add_status(results)
 
         if not results:
-            st.error("No lab results could be found in this file. Please try a different report.")
+            st.error(
+                "No numeric lab results could be found. This tool reads lab test values "
+                "(blood, urine, lipid and similar tests). X-ray, ultrasound and ECG reports are not supported yet. "
+                "For photos, make sure the image is sharp, upright, and well lit."
+            )
             st.stop()
 
         with st.spinner("Writing a plain-language explanation..."):
@@ -84,6 +111,7 @@ if st.button("Interpret report", type="primary"):
 
         st.session_state["results"] = results
         st.session_state["explanation"] = explanation
+        st.session_state["from_file"] = from_file
 
     except RuntimeError:
         st.error("The AI service is busy right now. Please try again in a minute.")
@@ -96,12 +124,18 @@ if "results" in st.session_state:
     results = st.session_state["results"]
 
     st.subheader("Your results")
+    if st.session_state.get("from_file"):
+        st.info(
+            "This report was read from an image or scan, so the values were read by AI and could not be "
+            "cross-checked automatically. Please compare each value with your original report."
+        )
+
     table = build_table(results)
     st.dataframe(table.style.map(color_status, subset=["Status"]), width="stretch", hide_index=True)
 
     if any(r.get("flag") == "extreme" for r in results):
         st.error("One or more values are far outside the reference range. This could be a typing or lab error, or a significant finding. Please contact a doctor promptly.")
-    if any(not r.get("verified") for r in results):
+    if any(r.get("verified") is False for r in results):
         st.warning("Some values could not be matched to the report text. Please check them against your original report.")
 
     st.subheader("In plain language")
