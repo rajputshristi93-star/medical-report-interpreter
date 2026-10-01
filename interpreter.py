@@ -26,7 +26,8 @@ GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]  # text only, used a
 USE_CACHE = os.getenv("LLM_CACHE", "0") == "1"
 CACHE_DIR = pathlib.Path(".llm_cache")
 
-MAX_CHUNKS = 12  # safety cap on requests per report
+MAX_CHUNKS = 12  # safety cap on requests per pass
+IMAGING_UNITS = {"mm", "cm", "cc"}
 
 _gemini_paused_until = 0.0
 
@@ -101,12 +102,14 @@ Return ONLY a JSON list. Each item must look like:
 {"test": "Hemoglobin", "value": 10.2, "unit": "g/dL", "ref_low": 13.0, "ref_high": 17.0}
 
 Rules:
+- Copy the test name exactly as printed in the report.
 - Copy numbers exactly as printed. Never correct, guess, or infer values.
 - If a value is unclear or unreadable, skip it.
 - If a reference range is missing, use null for ref_low and ref_high.
-- A range like "<200" means ref_low null and ref_high 200. A range like ">40" means ref_low 40 and ref_high null.
+- A range like "<200" means ref_low null and ref_high 200. A range like ">40" means ref_low 40 and ref_high null. Copy every digit of the limit.
 - Skip results that are not numeric (for example Negative, Pale Yellow, NIL).
 - Ignore patient details, dates, lab address, methods, and explanatory notes.
+- Ignore imaging and radiology findings (ultrasound, X-ray, ECG), such as organ sizes in mm or cm.
 - Include every test from every table and every page.
 """
 
@@ -149,13 +152,11 @@ def _clean(items):
         value = _to_float(r.get("value"))
         if not name or value is None:
             continue
-        out.append({
-            "test": name,
-            "value": value,
-            "unit": str(r.get("unit") or ""),
-            "ref_low": _to_float(r.get("ref_low")),
-            "ref_high": _to_float(r.get("ref_high")),
-        })
+        unit = str(r.get("unit") or "")
+        lo, hi = _to_float(r.get("ref_low")), _to_float(r.get("ref_high"))
+        if unit.lower() in IMAGING_UNITS and lo is None and hi is None:
+            continue  # organ sizes from ultrasound and similar, not lab tests
+        out.append({"test": name, "value": value, "unit": unit, "ref_low": lo, "ref_high": hi})
     return out
 
 
@@ -169,7 +170,7 @@ def _dedupe(results):
     return out
 
 
-def _chunk_lines(lines, max_chars=2500, overlap=3):
+def _chunk_lines(lines, max_chars=2000, overlap=3):
     chunks, cur, size = [], [], 0
     for line in lines:
         if size + len(line) > max_chars and cur:
@@ -183,14 +184,80 @@ def _chunk_lines(lines, max_chars=2500, overlap=3):
     return chunks
 
 
-def extract_results(report_text):
-    """For PDFs that contain real text. Splits long reports into chunks."""
-    chunks = _chunk_lines(clean_lines(report_text))[:MAX_CHUNKS]
-    results = []
-    for chunk in chunks:
+# ---------- number helpers (verification and finding missed rows) ----------
+
+NUM_RE = re.compile(r"(?<![\d.])\d+(?:\.\d+)?")
+
+# A line that looks like: <name> <value> <unit> <range>, for example "Mean Corpuscular Volume (MCV) 93.3 fL 83 - 101"
+ROW_RE = re.compile(
+    r"[A-Za-z\)\]]\s+\d+(?:\.\d+)?\s+\S+\s+"
+    r"(?:\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?|[<>]=?\s*\d+(?:\.\d+)?)"
+)
+
+
+def _numbers_in(line):
+    return {round(float(m), 6) for m in NUM_RE.findall(line.replace(",", ""))}
+
+
+def _name_tokens(name):
+    return re.findall(r"[a-z]{3,}", str(name).lower())
+
+
+def _strip_start(s):
+    return re.sub(r"^[^a-z0-9]+", "", s.lower())
+
+
+def _first_word(name):
+    m = re.match(r"[a-z0-9]+", _strip_start(str(name)))
+    return m.group(0) if m else ""
+
+
+def _is_covered(line_low, line_nums, results):
+    for r in results:
+        v = r.get("value")
+        if v is None or round(v, 6) not in line_nums:
+            continue
+        tokens = _name_tokens(r.get("test", ""))
+        if not tokens or any(t in line_low for t in tokens):
+            return True
+    return False
+
+
+def _missed_lines(results, lines):
+    """Lines that look like result rows but no extracted result accounts for them."""
+    out = []
+    for line in lines:
+        nums = _numbers_in(line)
+        looks_like_row = len(nums) >= 2 or (nums and ("<" in line or ">" in line))
+        if looks_like_row and re.search(r"[A-Za-z]{3,}", line) and not _is_covered(line.lower(), nums, results):
+            out.append(line)
+    return out
+
+
+def _run_chunks(lines):
+    out = []
+    for chunk in _chunk_lines(lines)[:MAX_CHUNKS]:
         raw = ask_llm(EXTRACT_PROMPT + "\nREPORT TEXT:\n" + chunk, json_mode=True)
-        results.extend(_clean(_parse_json_list(raw)))
-    return _dedupe(results)
+        out.extend(_clean(_parse_json_list(raw)))
+    return out
+
+
+def extract_results(report_text):
+    """For PDFs that contain real text. Long reports are split into chunks, then checked for missed rows."""
+    lines = clean_lines(report_text)
+    results = _dedupe(_run_chunks(lines))
+
+    missed = _missed_lines(results, lines)[:150]
+    if missed:
+        print(f"Second pass over {len(missed)} lines the first pass did not cover...")
+        results = _dedupe(results + _run_chunks(missed))
+    return results
+
+
+def find_unread_lines(results, text):
+    """Lines that clearly look like result rows (name, value, unit, range) but were not extracted."""
+    lines = clean_lines(text)
+    return [ln for ln in _missed_lines(results, lines) if ROW_RE.search(ln)][:30]
 
 
 def extract_results_from_file(data, mime_type):
@@ -204,24 +271,16 @@ def extract_results_from_file(data, mime_type):
 
 
 def verify_against_text(results, text):
-    """Marks a row True only if its number appears on a line that mentions the test name."""
-    lines = [line.replace(",", "") for line in text.splitlines()]
+    """True only if one line of the report STARTS with the test name and contains the value and its range limits."""
+    rows = [(_strip_start(line), _numbers_in(line)) for line in text.splitlines()]
     for r in results:
         v = r.get("value")
-        if v is None:
+        word = _first_word(r.get("test", ""))
+        if v is None or not word:
             r["verified"] = False
             continue
-        forms = {str(v), f"{v:.10g}", f"{v:.2f}"}
-        tokens = re.findall(r"[a-z]{3,}", str(r.get("test", "")).lower())
-        ok = False
-        for line in lines:
-            low = line.lower()
-            if tokens and not any(t in low for t in tokens):
-                continue
-            if any(re.search(rf"(?<![\d.]){re.escape(f)}(?!\d|\.\d)", line) for f in forms):
-                ok = True
-                break
-        r["verified"] = ok
+        needed = {round(n, 6) for n in (v, r.get("ref_low"), r.get("ref_high")) if n is not None}
+        r["verified"] = any(low.startswith(word) and needed <= nums for low, nums in rows)
     return results
 
 
@@ -239,6 +298,9 @@ Rules:
 - Do not diagnose, suggest medications, or recommend treatment.
 - State clearly that only a doctor can interpret these results properly.
 - Do not invent any values.
+- Do not state any reference range, threshold, or "normal" value that is not listed below.
+- Do not call a result high, low, or abnormal unless its status below says so.
+- For unusual or abbreviated tests (for example P-LCC or Mentzer Index), do NOT explain what they measure and do NOT guess. Just state the value and status and suggest asking the doctor what it means.
 - If a result is marked EXTREME, say it is far outside the range, that it could be a typing or lab error or a significant finding, and advise contacting a doctor promptly rather than waiting.
 - Group related results together (for example kidney tests, liver tests, blood count) instead of repeating yourself.
 
@@ -256,8 +318,23 @@ def explain_results(results):
                 line += " [EXTREME]"
             lines.append(line)
     normal = sum(1 for r in results if r.get("status") == "normal")
-    unknown = sum(1 for r in results if r.get("status") == "unknown")
     lines.append(f"{normal} other results are within their reference ranges.")
+
+    unknown = [r for r in results if r.get("status") == "unknown"]
     if unknown:
-        lines.append(f"{unknown} results had no reference range to compare against.")
+        lines.append(
+            "Results with no reference range in the report (do not call these high or low; "
+            "mention them neutrally and suggest asking the doctor about them):"
+        )
+        for r in unknown[:15]:
+            lines.append(f"- {r['test']}: {r['value']} {r.get('unit', '')}")
+
+    unverified = [r for r in results if r.get("status") == "unverified"]
+    if unverified:
+        lines.append(
+            "Results that could not be matched to the report text (do NOT interpret these; "
+            "tell the patient to check them against the original report):"
+        )
+        for r in unverified[:15]:
+            lines.append(f"- {r['test']}: {r['value']} {r.get('unit', '')}")
     return ask_llm(EXPLAIN_PROMPT + "\n".join(lines))

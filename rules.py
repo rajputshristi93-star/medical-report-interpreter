@@ -3,6 +3,11 @@ def add_status(results):
         v, lo, hi = r.get("value"), r.get("ref_low"), r.get("ref_high")
         r["flag"] = ""
 
+        # Numbers that could not be matched to the report are never interpreted
+        if r.get("verified") is False:
+            r["status"] = "unverified"
+            continue
+
         if v is None or (lo is None and hi is None):
             r["status"] = "unknown"
             continue

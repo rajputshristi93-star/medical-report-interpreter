@@ -8,6 +8,7 @@ from interpreter import (
     explain_results,
     extract_results,
     extract_results_from_file,
+    find_unread_lines,
     verify_against_text,
 )
 from rules import add_status
@@ -31,6 +32,7 @@ STATUS_COLORS = {
     "LOW": "background-color:#fff3cd;color:#856404",
     "HIGH": "background-color:#f8d7da;color:#721c24",
     "UNKNOWN": "background-color:#e2e3e5;color:#383d41",
+    "UNVERIFIED": "background-color:#e2e3e5;color:#6c757d;font-style:italic",
 }
 
 
@@ -54,7 +56,7 @@ def build_table(results):
         if r.get("flag") == "extreme":
             notes.append("Far outside range - verify and contact a doctor")
         if r.get("verified") is False:
-            notes.append("Value not found in report text - check manually")
+            notes.append("Value or range not matched to the report text - check manually")
         rows.append({
             "Test": r.get("test"),
             "Value": r.get("value"),
@@ -70,8 +72,8 @@ def build_table(results):
 uploaded = st.file_uploader("Upload a lab report (PDF or image)", type=["pdf", "png", "jpg", "jpeg"])
 
 if uploaded is None:
-    st.session_state.pop("results", None)
-    st.session_state.pop("explanation", None)
+    for key in ("results", "explanation", "from_file", "unread"):
+        st.session_state.pop(key, None)
     st.info("Upload a lab report as a PDF, or a clear photo or screenshot, to get started.")
     st.stop()
 
@@ -84,6 +86,7 @@ if st.button("Interpret report", type="primary"):
         data = uploaded.getvalue()
         mime = get_mime(uploaded.name)
         text = ""
+        unread = []
         from_file = mime != "application/pdf"  # images always go straight to the AI
 
         if not from_file:
@@ -95,7 +98,9 @@ if st.button("Interpret report", type="primary"):
             if from_file:
                 results = extract_results_from_file(data, mime)
             else:
-                results = verify_against_text(extract_results(text), text)
+                results = extract_results(text)
+                unread = find_unread_lines(results, text)
+                results = verify_against_text(results, text)
             results = add_status(results)
 
         if not results:
@@ -112,6 +117,7 @@ if st.button("Interpret report", type="primary"):
         st.session_state["results"] = results
         st.session_state["explanation"] = explanation
         st.session_state["from_file"] = from_file
+        st.session_state["unread"] = unread
 
     except RuntimeError:
         st.error("The AI service is busy right now. Please try again in a minute.")
@@ -136,7 +142,14 @@ if "results" in st.session_state:
     if any(r.get("flag") == "extreme" for r in results):
         st.error("One or more values are far outside the reference range. This could be a typing or lab error, or a significant finding. Please contact a doctor promptly.")
     if any(r.get("verified") is False for r in results):
-        st.warning("Some values could not be matched to the report text. Please check them against your original report.")
+        st.warning("Some rows are marked UNVERIFIED because their numbers could not be matched to the report text. They are not interpreted, so please check them against your original report.")
+
+    unread = st.session_state.get("unread", [])
+    if unread:
+        with st.expander(f"⚠️ {len(unread)} line(s) in your report may contain results that were not read"):
+            st.write("The AI did not pick up these lines. Please check them against your original report:")
+            for line in unread:
+                st.text(line)
 
     st.subheader("In plain language")
     st.markdown(st.session_state["explanation"])

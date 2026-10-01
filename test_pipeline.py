@@ -10,5 +10,6 @@ results = add_status(verify_against_text(extract_results(text), text))
 
 pd.set_option("display.width", 200)
 pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", None)
 print(pd.DataFrame(results))
 print("\n" + explain_results(results))
