@@ -308,7 +308,7 @@ RESULTS:
 """
 
 
-def explain_results(results):
+def explain_results(results, context=""):
     lines = []
     for r in results:
         if r.get("status") in ("low", "high"):
@@ -337,4 +337,6 @@ def explain_results(results):
         )
         for r in unverified[:15]:
             lines.append(f"- {r['test']}: {r['value']} {r.get('unit', '')}")
+    if context:
+        lines.insert(0, "Optional background from the user (do not diagnose from it; use it only to make the explanation more relevant):\n" + context + "\n")
     return ask_llm(EXPLAIN_PROMPT + "\n".join(lines))

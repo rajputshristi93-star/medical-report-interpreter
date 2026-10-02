@@ -1,5 +1,6 @@
 venv/
 .env
 __pycache__/
-samples/.llm_cache/
+samples/
 .llm_cache/
+.streamlit/secrets.toml
