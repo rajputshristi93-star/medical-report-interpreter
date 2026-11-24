@@ -1,6 +1,24 @@
+# Python
 venv/
-.env
+.venv/
 __pycache__/
+*.pyc
+
+# Secrets - NEVER commit these
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local / generated data
 samples/
 .llm_cache/
-.streamlit/secrets.toml
+data/
+eda_outputs/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,466 @@
+{
+  "name": "NHANES multi-condition screening models (educational)",
+  "trained_on": "2026-10-14",
+  "sklearn_version": "1.9.1",
+  "features": [
+    "age",
+    "hemoglobin",
+    "hematocrit",
+    "rbc",
+    "wbc",
+    "platelets",
+    "mcv",
+    "mch",
+    "mchc",
+    "rdw",
+    "hba1c",
+    "glucose",
+    "creatinine",
+    "bun",
+    "uric_acid",
+    "sodium",
+    "potassium",
+    "chloride",
+    "calcium",
+    "phosphorus",
+    "albumin",
+    "total_protein",
+    "globulin",
+    "total_bilirubin",
+    "alt",
+    "ast",
+    "alk_phos",
+    "ggt",
+    "total_cholesterol",
+    "triglycerides",
+    "hdl",
+    "ldl",
+    "sex_male"
+  ],
+  "enabled": [
+    "diabetes",
+    "kidney_disease"
+  ],
+  "titles": {
+    "diabetes": "Diabetes",
+    "kidney_disease": "Kidney problems",
+    "kidney_stones": "Kidney stones",
+    "liver_condition": "Liver condition",
+    "gallstones": "Gallstones",
+    "gout": "Gout",
+    "high_cholesterol": "High cholesterol",
+    "hypertension": "High blood pressure",
+    "heart_disease": "Heart disease",
+    "stroke": "Stroke",
+    "cancer": "Cancer (any type)"
+  },
+  "key_features": {
+    "diabetes": [
+      "hba1c",
+      "glucose"
+    ],
+    "kidney_disease": [
+      "creatinine",
+      "bun",
+      "uric_acid"
+    ],
+    "kidney_stones": [
+      "calcium",
+      "uric_acid",
+      "creatinine",
+      "phosphorus"
+    ],
+    "liver_condition": [
+      "alt",
+      "ast",
+      "alk_phos",
+      "total_bilirubin",
+      "albumin",
+      "ggt"
+    ],
+    "gallstones": [
+      "total_bilirubin",
+      "alk_phos",
+      "ggt",
+      "total_cholesterol"
+    ],
+    "gout": [
+      "uric_acid",
+      "creatinine"
+    ],
+    "high_cholesterol": [
+      "total_cholesterol",
+      "ldl",
+      "triglycerides",
+      "hdl"
+    ],
+    "hypertension": [
+      "creatinine",
+      "uric_acid",
+      "triglycerides",
+      "glucose"
+    ],
+    "heart_disease": [
+      "ldl",
+      "hdl",
+      "total_cholesterol",
+      "hba1c",
+      "creatinine"
+    ],
+    "stroke": [
+      "ldl",
+      "hdl",
+      "hba1c",
+      "glucose",
+      "creatinine"
+    ],
+    "cancer": [
+      "hemoglobin",
+      "wbc",
+      "platelets",
+      "albumin",
+      "alk_phos"
+    ]
+  },
+  "units": {
+    "age": "years",
+    "hemoglobin": "g/dL",
+    "hematocrit": "%",
+    "rbc": "million/uL",
+    "wbc": "10^3/uL",
+    "platelets": "10^3/uL",
+    "mcv": "fL",
+    "mch": "pg",
+    "mchc": "g/dL",
+    "rdw": "%",
+    "hba1c": "%",
+    "glucose": "mg/dL",
+    "creatinine": "mg/dL",
+    "bun": "mg/dL",
+    "uric_acid": "mg/dL",
+    "sodium": "mmol/L",
+    "potassium": "mmol/L",
+    "chloride": "mmol/L",
+    "calcium": "mg/dL",
+    "phosphorus": "mg/dL",
+    "albumin": "g/dL",
+    "total_protein": "g/dL",
+    "globulin": "g/dL",
+    "total_bilirubin": "mg/dL",
+    "alt": "U/L",
+    "ast": "U/L",
+    "alk_phos": "U/L",
+    "ggt": "U/L",
+    "total_cholesterol": "mg/dL",
+    "triglycerides": "mg/dL",
+    "hdl": "mg/dL",
+    "ldl": "mg/dL"
+  },
+  "results": {
+    "diabetes": {
+      "split": "train on older cycles, test on L",
+      "rows": 26726,
+      "positives": 3747,
+      "prevalence": 0.1402005537678665,
+      "model": "gradient boosting",
+      "train_rows": 20953,
+      "test_rows": 5773,
+      "test_positives": 823,
+      "cv_roc_auc": {
+        "gradient boosting": 0.9465168885076558,
+        "logistic regression": 0.9366298531018515
+      },
+      "threshold": 0.24329376985250975,
+      "roc_auc": 0.9574520416804742,
+      "pr_auc": 0.8560340153102488,
+      "recall_at_threshold": 0.8347509113001215,
+      "precision_at_threshold": 0.7104446742502585,
+      "baseline_auc_age_sex": 0.697150238717675,
+      "lab_lift": 0.26030180296279914,
+      "enabled": true,
+      "roc_auc_by_sex": {
+        "male": 0.9678587067581376,
+        "female": 0.9475052137643378
+      }
+    },
+    "kidney_disease": {
+      "split": "train on older cycles, test on L",
+      "rows": 26175,
+      "positives": 985,
+      "prevalence": 0.037631327602674305,
+      "model": "gradient boosting",
+      "train_rows": 20433,
+      "test_rows": 5742,
+      "test_positives": 215,
+      "cv_roc_auc": {
+        "gradient boosting": 0.813218432162914,
+        "logistic regression": 0.8005607094104686
+      },
+      "threshold": 0.020624761012353606,
+      "roc_auc": 0.8234144432616205,
+      "pr_auc": 0.3208841795442938,
+      "recall_at_threshold": 0.8604651162790697,
+      "precision_at_threshold": 0.06401384083044982,
+      "baseline_auc_age_sex": 0.7044197407231308,
+      "lab_lift": 0.11899470253848965,
+      "enabled": true,
+      "roc_auc_by_sex": {
+        "male": 0.8553927048399786,
+        "female": 0.7939773862475793
+      }
+    },
+    "kidney_stones": {
+      "split": "random 80/20 (too few cases for a time-based split)",
+      "rows": 20417,
+      "positives": 1985,
+      "prevalence": 0.09722290248322477,
+      "model": "gradient boosting",
+      "train_rows": 16333,
+      "test_rows": 4084,
+      "test_positives": 397,
+      "cv_roc_auc": {
+        "gradient boosting": 0.6419319165114797,
+        "logistic regression": 0.6372721655252495
+      },
+      "threshold": 0.08347098262221514,
+      "roc_auc": 0.6333960494323101,
+      "pr_auc": 0.1552769294605863,
+      "recall_at_threshold": 0.7783375314861462,
+      "precision_at_threshold": 0.11870918171340761,
+      "baseline_auc_age_sex": 0.6011092141426854,
+      "lab_lift": 0.03228683528962473,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.6486417368356616,
+        "female": 0.6126762693593806
+      }
+    },
+    "liver_condition": {
+      "split": "train on older cycles, test on L",
+      "rows": 26168,
+      "positives": 1273,
+      "prevalence": 0.048647202690308776,
+      "model": "gradient boosting",
+      "train_rows": 20424,
+      "test_rows": 5744,
+      "test_positives": 338,
+      "cv_roc_auc": {
+        "gradient boosting": 0.7396362591269547,
+        "logistic regression": 0.713083850541939
+      },
+      "threshold": 0.032502688386643316,
+      "roc_auc": 0.6904417511115198,
+      "pr_auc": 0.14858890529947646,
+      "recall_at_threshold": 0.849112426035503,
+      "precision_at_threshold": 0.07786218122626153,
+      "baseline_auc_age_sex": 0.5642626426477703,
+      "lab_lift": 0.12617910846374958,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.6988391952525691,
+        "female": 0.6879383238427563
+      }
+    },
+    "gallstones": {
+      "split": "train on older cycles, test on L",
+      "rows": 10711,
+      "positives": 1196,
+      "prevalence": 0.11166090934553263,
+      "model": "logistic regression",
+      "train_rows": 4971,
+      "test_rows": 5740,
+      "test_positives": 633,
+      "cv_roc_auc": {
+        "gradient boosting": 0.7003756231255072,
+        "logistic regression": 0.7162575310195043
+      },
+      "threshold": 0.08360726510139253,
+      "roc_auc": 0.7092795534178378,
+      "pr_auc": 0.2242361183994464,
+      "recall_at_threshold": 0.8167456556082149,
+      "precision_at_threshold": 0.15922389898367725,
+      "baseline_auc_age_sex": 0.6756258098802529,
+      "lab_lift": 0.03365374353758488,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.6798985215216917,
+        "female": 0.6732094517386448
+      }
+    },
+    "gout": {
+      "split": "random 80/20 (too few cases for a time-based split)",
+      "rows": 20441,
+      "positives": 995,
+      "prevalence": 0.04867667922312999,
+      "model": "gradient boosting",
+      "train_rows": 16352,
+      "test_rows": 4089,
+      "test_positives": 199,
+      "cv_roc_auc": {
+        "gradient boosting": 0.8175409523725481,
+        "logistic regression": 0.8135784957049937
+      },
+      "threshold": 0.04342529376943068,
+      "roc_auc": 0.806318223508287,
+      "pr_auc": 0.18226195095691977,
+      "recall_at_threshold": 0.7688442211055276,
+      "precision_at_threshold": 0.1119239209948793,
+      "baseline_auc_age_sex": 0.7257050031649249,
+      "lab_lift": 0.08061322034336205,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.7764869738833607,
+        "female": 0.8176027234346197
+      }
+    },
+    "high_cholesterol": {
+      "split": "train on older cycles, test on L",
+      "rows": 27057,
+      "positives": 9611,
+      "prevalence": 0.35521306870680414,
+      "model": "gradient boosting",
+      "train_rows": 21101,
+      "test_rows": 5956,
+      "test_positives": 2421,
+      "cv_roc_auc": {
+        "gradient boosting": 0.7830130891824979,
+        "logistic regression": 0.773915259954822
+      },
+      "threshold": 0.33950430189151704,
+      "roc_auc": 0.7790004597910667,
+      "pr_auc": 0.6642296423403584,
+      "recall_at_threshold": 0.8149524989673689,
+      "precision_at_threshold": 0.5866785608088017,
+      "baseline_auc_age_sex": 0.7361285358488053,
+      "lab_lift": 0.04287192394226136,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.7674696526431495,
+        "female": 0.7878671597013884
+      }
+    },
+    "hypertension": {
+      "split": "train on older cycles, test on L",
+      "rows": 27482,
+      "positives": 9913,
+      "prevalence": 0.36070882759624484,
+      "model": "gradient boosting",
+      "train_rows": 21496,
+      "test_rows": 5986,
+      "test_positives": 2215,
+      "cv_roc_auc": {
+        "gradient boosting": 0.8167592832770196,
+        "logistic regression": 0.8083059874724997
+      },
+      "threshold": 0.3194277397025703,
+      "roc_auc": 0.8076675208748241,
+      "pr_auc": 0.695976655990899,
+      "recall_at_threshold": 0.8663656884875847,
+      "precision_at_threshold": 0.5375350140056022,
+      "baseline_auc_age_sex": 0.741825551179759,
+      "lab_lift": 0.06584196969506506,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.7953454792052784,
+        "female": 0.8179625742305253
+      }
+    },
+    "heart_disease": {
+      "split": "train on older cycles, test on L",
+      "rows": 26091,
+      "positives": 2321,
+      "prevalence": 0.08895787819554636,
+      "model": "gradient boosting",
+      "train_rows": 20364,
+      "test_rows": 5727,
+      "test_positives": 562,
+      "cv_roc_auc": {
+        "gradient boosting": 0.8421952271354313,
+        "logistic regression": 0.8370390594977399
+      },
+      "threshold": 0.07763782545666935,
+      "roc_auc": 0.8407743744681729,
+      "pr_auc": 0.3699982268127688,
+      "recall_at_threshold": 0.8736654804270463,
+      "precision_at_threshold": 0.21357111787733798,
+      "baseline_auc_age_sex": 0.777023181625573,
+      "lab_lift": 0.06375119284259989,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.8372228241835216,
+        "female": 0.8344705362378709
+      }
+    },
+    "stroke": {
+      "split": "train on older cycles, test on L",
+      "rows": 26184,
+      "positives": 1084,
+      "prevalence": 0.041399327833791626,
+      "model": "gradient boosting",
+      "train_rows": 20441,
+      "test_rows": 5743,
+      "test_positives": 261,
+      "cv_roc_auc": {
+        "gradient boosting": 0.7959520404917936,
+        "logistic regression": 0.7880094326343072
+      },
+      "threshold": 0.03696108757277388,
+      "roc_auc": 0.7550146700941152,
+      "pr_auc": 0.10474344412875448,
+      "recall_at_threshold": 0.842911877394636,
+      "precision_at_threshold": 0.07804185881518269,
+      "baseline_auc_age_sex": 0.7207380895469813,
+      "lab_lift": 0.034276580547133895,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.7362637362637362,
+        "female": 0.7709408773045137
+      }
+    },
+    "cancer": {
+      "split": "train on older cycles, test on L",
+      "rows": 26196,
+      "positives": 2780,
+      "prevalence": 0.10612307222476713,
+      "model": "gradient boosting",
+      "train_rows": 20449,
+      "test_rows": 5747,
+      "test_positives": 846,
+      "cv_roc_auc": {
+        "gradient boosting": 0.7893173561272823,
+        "logistic regression": 0.7889483286678065
+      },
+      "threshold": 0.079734447596111,
+      "roc_auc": 0.7817279775488478,
+      "pr_auc": 0.3359731749229119,
+      "recall_at_threshold": 0.8983451536643026,
+      "precision_at_threshold": 0.24073487488121634,
+      "baseline_auc_age_sex": 0.7728178694655359,
+      "lab_lift": 0.00891010808331194,
+      "enabled": false,
+      "roc_auc_by_sex": {
+        "male": 0.8037368013174465,
+        "female": 0.7622899541546465
+      },
+      "excluded_by_design": true
+    }
+  },
+  "cycles_used": [
+    "G",
+    "H",
+    "I",
+    "J",
+    "L"
+  ],
+  "dataset": "NHANES survey cycles G, H, I, J, L (US national survey), adults 18+, 27512 people; labels are self-reported doctor diagnoses; tested on the newest cycle",
+  "limitations": [
+    "US population; may not transfer to other countries, labs or methods",
+    "Self-reported labels, not confirmed diagnoses",
+    "Lab methods changed a little between survey cycles",
+    "Survey sampling weights were not used",
+    "Many conditions become more common with age, so each model is compared with an age + sex only baseline and must beat it",
+    "Cancer is evaluated but never shown to users",
+    "Thyroid tests are not included, so no thyroid model",
+    "Screening aid only. Not a diagnosis."
+  ]
+}

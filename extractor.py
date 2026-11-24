@@ -1,7 +1,8 @@
 import re
-
 import pdfplumber
-
+import logging
+for _n in ("pdfminer", "pdfminer.pdffont", "pdfplumber"):
+    logging.getLogger(_n).setLevel(logging.ERROR)
 
 def extract_text(file) -> str:
     """Accepts a file path or file object. Returns the text of all pages."""

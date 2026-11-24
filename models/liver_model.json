@@ -1,0 +1,88 @@
+{
+  "name": "Liver disease screening model (educational)",
+  "trained_on": "2026-10-10",
+  "sklearn_version": "1.9.1",
+  "algorithm": "random forest",
+  "threshold": 0.5,
+  "features": [
+    "age",
+    "sex_male",
+    "total_bilirubin",
+    "direct_bilirubin",
+    "alk_phos",
+    "alt",
+    "ast",
+    "total_protein",
+    "albumin",
+    "ag_ratio"
+  ],
+  "units": {
+    "age": "years",
+    "sex_male": "1=male, 0=female",
+    "total_bilirubin": "mg/dL",
+    "direct_bilirubin": "mg/dL",
+    "alk_phos": "U/L",
+    "alt": "U/L",
+    "ast": "U/L",
+    "total_protein": "g/dL",
+    "albumin": "g/dL",
+    "ag_ratio": "ratio"
+  },
+  "dataset": "Indian Liver Patient Dataset (ILPD), UCI repository, 583 records from north-east Andhra Pradesh, India",
+  "class_balance": {
+    "liver_patient": 416,
+    "not_liver_patient": 167
+  },
+  "baseline_accuracy_majority_class": 0.7135506003430532,
+  "cv_results": {
+    "baseline (always majority class)": {
+      "roc_auc": 0.5,
+      "pr_auc": 0.71459620224205,
+      "recall": 1.0,
+      "balanced_acc": 0.5
+    },
+    "logistic regression": {
+      "roc_auc": 0.7176109867652156,
+      "pr_auc": 0.8754207539938801,
+      "recall": 0.591813658977838,
+      "balanced_acc": 0.6684139519960415
+    },
+    "random forest": {
+      "roc_auc": 0.7387023700456536,
+      "pr_auc": 0.8843719314755474,
+      "recall": 0.7987788331071913,
+      "balanced_acc": 0.6294463966105757
+    },
+    "gradient boosting": {
+      "roc_auc": 0.7035515249445599,
+      "pr_auc": 0.8676619684556224,
+      "recall": 0.8617367706919946,
+      "balanced_acc": 0.5968228013004133
+    }
+  },
+  "test_metrics": {
+    "roc_auc": 0.7965981573352233,
+    "pr_auc": 0.914619480564017,
+    "recall": 0.8795180722891566,
+    "balanced_accuracy": 0.6456413890857547,
+    "brier_score": 0.16300058624631256
+  },
+  "test_by_sex": {
+    "male": {
+      "n": 90,
+      "recall": 0.890625,
+      "roc_auc": 0.8215144230769231
+    },
+    "female": {
+      "n": 27,
+      "recall": 0.8421052631578947,
+      "roc_auc": 0.6973684210526315
+    }
+  },
+  "limitations": [
+    "Small dataset from one region",
+    "Labels are clinical diagnoses, not proven ground truth",
+    "Not validated on other labs, assays or populations",
+    "Screening aid only. Not a diagnosis."
+  ]
+}

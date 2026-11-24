@@ -1,9 +1,13 @@
-import os
-import re
-import json
-import time
 import hashlib
+import io
+import json
+import os
 import pathlib
+import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
@@ -16,62 +20,94 @@ except ImportError:
     Groq = None
 
 load_dotenv()
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY")) if (Groq and os.getenv("GROQ_API_KEY")) else None
+
+try:  # a timeout keeps one slow request from freezing the whole report
+    gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options=types.HttpOptions(timeout=60_000))
+except Exception:
+    gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+try:
+    groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"), timeout=45) if (Groq and os.getenv("GROQ_API_KEY")) else None
+except Exception:
+    groq_client = None
 
 GEMINI_MODELS = ["gemini-3.8-flash"]
-GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]  # text only, used as fallback
+GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]  # text only
 
 # Dev-only cache so repeated test runs don't spend quota. Fake reports only.
 USE_CACHE = os.getenv("LLM_CACHE", "0") == "1"
 CACHE_DIR = pathlib.Path(".llm_cache")
 
-MAX_CHUNKS = 12  # safety cap on requests per pass
+MAX_CHUNKS = 10            # safety cap on requests per pass
+CHUNK_CHARS = 3200         # bigger chunks mean fewer requests
+MAX_WORKERS = int(os.getenv("LLM_WORKERS", "4"))  # chunks read at the same time
 IMAGING_UNITS = {"mm", "cm", "cc"}
 
 _gemini_paused_until = 0.0
+_thinking_ok = True        # turned off automatically if the model does not accept the setting
+_lock = threading.Lock()
 
 
-def _call_gemini(prompt, json_mode):
+def _gemini_config(json_mode, fast):
+    kw = {}
+    if json_mode:
+        kw["response_mime_type"] = "application/json"
+    if fast and _thinking_ok:
+        kw["thinking_config"] = types.ThinkingConfig(thinking_budget=0)  # answer straight away, no long reasoning
+    return types.GenerateContentConfig(**kw) if kw else None
+
+
+def _call_gemini(prompt, json_mode, fast=True):
     """prompt can be a string, or a list like [file_part, "instructions"]."""
-    global _gemini_paused_until
+    global _gemini_paused_until, _thinking_ok
     if time.time() < _gemini_paused_until:
         return None
-    config = types.GenerateContentConfig(response_mime_type="application/json") if json_mode else None
     for model in GEMINI_MODELS:
-        try:
-            response = gemini_client.models.generate_content(model=model, contents=prompt, config=config)
-            return response.text
-        except errors.ServerError as e:
-            print(f"Gemini {model} busy ({e.code})")
-        except errors.ClientError as e:
-            if e.code == 429:
-                print(f"Gemini {model} rate limit reached, pausing Gemini for 60s")
-                _gemini_paused_until = time.time() + 60
-            else:
-                print(f"Gemini {model} error {e.code}")
-        except Exception as e:
-            print(f"Gemini {model} network error: {str(e)[:100]}")
+        for _try in range(2):
+            try:
+                response = gemini_client.models.generate_content(model=model, contents=prompt, config=_gemini_config(json_mode, fast))
+                return response.text
+            except errors.ServerError as e:
+                print(f"Gemini {model} busy ({e.code})")
+                break
+            except errors.ClientError as e:
+                if e.code == 400 and fast and _thinking_ok:
+                    with _lock:
+                        _thinking_ok = False  # this model does not take the setting; retry without it
+                    print("Gemini: turning off the fast-thinking setting")
+                    continue
+                if e.code == 429:
+                    print(f"Gemini {model} rate limit reached, pausing Gemini for 30s")
+                    with _lock:
+                        _gemini_paused_until = time.time() + 30
+                else:
+                    print(f"Gemini {model} error {e.code}")
+                break
+            except Exception as e:
+                print(f"Gemini {model} network error: {str(e)[:100]}")
+                break
     return None
 
 
-def _call_groq(prompt, json_mode):
+def _call_groq(prompt, json_mode, fast=True):
     if groq_client is None or not isinstance(prompt, str):
         return None
     for model in GROQ_MODELS:
-        try:
-            response = groq_client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            print(f"Groq {model} failed: {str(e)[:150]}")
+        for kwargs in ({"temperature": 0, "reasoning_effort": "low"}, {"temperature": 0}):
+            try:
+                response = groq_client.chat.completions.create(model=model, messages=[{"role": "user", "content": prompt}], **kwargs)
+                return response.choices[0].message.content
+            except Exception as e:
+                msg = str(e)
+                if "reasoning" in msg.lower() and "reasoning_effort" in kwargs:
+                    continue  # this model does not take the setting; try again without it
+                print(f"Groq {model} failed: {msg[:150]}")
+                break
     return None
 
 
-def ask_llm(prompt, json_mode=False, retries=4, vision=False):
-    """vision=True means the prompt contains an image or PDF, so only Gemini can be used."""
+def ask_llm(prompt, json_mode=False, retries=3, vision=False, prefer=None, fast=True):
+    """vision=True means the prompt contains an image or PDF, so only Gemini can be used.
+    prefer='groq' or 'gemini' decides which provider is asked first; the other one is the backup."""
     cache_file = None
     if USE_CACHE and isinstance(prompt, str):
         CACHE_DIR.mkdir(exist_ok=True)
@@ -80,16 +116,21 @@ def ask_llm(prompt, json_mode=False, retries=4, vision=False):
         if cache_file.exists():
             return cache_file.read_text(encoding="utf-8")
 
-    providers = (_call_gemini,) if vision else (_call_gemini, _call_groq)
+    if vision:
+        providers = (_call_gemini,)
+    elif prefer == "groq" and groq_client:
+        providers = (_call_groq, _call_gemini)
+    else:
+        providers = (_call_gemini, _call_groq)
 
     for attempt in range(retries):
         for provider in providers:
-            text = provider(prompt, json_mode)
+            text = provider(prompt, json_mode, fast)
             if text:
                 if cache_file:
                     cache_file.write_text(text, encoding="utf-8")
                 return text
-        wait = 10 * (attempt + 1)
+        wait = 2 * (attempt + 1)
         print(f"AI busy. Waiting {wait}s (attempt {attempt + 1}/{retries})...")
         time.sleep(wait)
 
@@ -170,7 +211,7 @@ def _dedupe(results):
     return out
 
 
-def _chunk_lines(lines, max_chars=2000, overlap=3):
+def _chunk_lines(lines, max_chars=CHUNK_CHARS, overlap=3):
     chunks, cur, size = [], [], 0
     for line in lines:
         if size + len(line) > max_chars and cur:
@@ -234,23 +275,41 @@ def _missed_lines(results, lines):
     return out
 
 
-def _run_chunks(lines):
-    out = []
-    for chunk in _chunk_lines(lines)[:MAX_CHUNKS]:
-        raw = ask_llm(EXTRACT_PROMPT + "\nREPORT TEXT:\n" + chunk, json_mode=True)
-        out.extend(_clean(_parse_json_list(raw)))
+def _run_chunks(lines, progress=None):
+    """Reads all chunks at the same time. Chunks alternate between the two AI providers so neither hits its limit."""
+    chunks = _chunk_lines(lines)[:MAX_CHUNKS]
+    if not chunks:
+        return []
+    prefs = ["gemini", "groq"] if groq_client else ["gemini"]
+
+    def work(item):
+        i, chunk = item
+        raw = ask_llm(EXTRACT_PROMPT + "\nREPORT TEXT:\n" + chunk, json_mode=True, prefer=prefs[i % len(prefs)])
+        return _clean(_parse_json_list(raw))
+
+    out, started = [], time.time()
+    with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(chunks)))) as pool:
+        futures = [pool.submit(work, (i, c)) for i, c in enumerate(chunks)]
+        for n, fut in enumerate(futures, start=1):  # results keep their original order
+            out.extend(fut.result())
+            if progress:
+                progress(n / len(chunks))
+    print(f"[timing] {len(chunks)} chunks read in {time.time() - started:.1f}s")
     return out
 
 
-def extract_results(report_text):
-    """For PDFs that contain real text. Long reports are split into chunks, then checked for missed rows."""
+def extract_results(report_text, progress=None):
+    """For PDFs that contain real text. Long reports are split into chunks, then checked for missed rows.
+    progress(fraction) is optional and lets the screen show a moving bar."""
     lines = clean_lines(report_text)
-    results = _dedupe(_run_chunks(lines))
+    results = _dedupe(_run_chunks(lines, (lambda f: progress(0.8 * f)) if progress else None))
 
     missed = _missed_lines(results, lines)[:150]
     if missed:
         print(f"Second pass over {len(missed)} lines the first pass did not cover...")
-        results = _dedupe(results + _run_chunks(missed))
+        results = _dedupe(results + _run_chunks(missed, (lambda f: progress(0.8 + 0.2 * f)) if progress else None))
+    if progress:
+        progress(1.0)
     return results
 
 
@@ -260,8 +319,29 @@ def find_unread_lines(results, text):
     return [ln for ln in _missed_lines(results, lines) if ROW_RE.search(ln)][:30]
 
 
+def _prepare_image(data, mime_type):
+    """Big phone photos are shrunk before upload: much faster, and still sharp enough to read."""
+    if not mime_type.startswith("image/"):
+        return data, mime_type
+    try:
+        from PIL import Image, ImageOps
+
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        if len(data) < 700_000 and max(img.size) <= 2200:
+            return data, mime_type
+        img.thumbnail((2200, 2200))
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "JPEG", quality=88, optimize=True)
+        print(f"[timing] image shrunk {len(data) // 1024} KB -> {len(buf.getvalue()) // 1024} KB")
+        return buf.getvalue(), "image/jpeg"
+    except Exception as e:
+        print("image shrink skipped:", str(e)[:100])
+        return data, mime_type
+
+
 def extract_results_from_file(data, mime_type):
     """For images (PNG/JPG) and scanned PDFs. Gemini reads the file directly."""
+    data, mime_type = _prepare_image(data, mime_type)
     part = types.Part.from_bytes(data=data, mime_type=mime_type)
     raw = ask_llm([part, EXTRACT_PROMPT], json_mode=True, vision=True)
     results = _dedupe(_clean(_parse_json_list(raw)))
@@ -295,6 +375,7 @@ Write three short sections:
 
 Rules:
 - Plain language, no jargon without explanation.
+- Keep the whole answer under about 350 words.
 - Do not diagnose, suggest medications, or recommend treatment.
 - State clearly that only a doctor can interpret these results properly.
 - Do not invent any values.
@@ -308,7 +389,7 @@ RESULTS:
 """
 
 
-def explain_results(results, context=""):
+def explain_results(results, context="", language="English"):
     lines = []
     for r in results:
         if r.get("status") in ("low", "high"):
@@ -339,4 +420,5 @@ def explain_results(results, context=""):
             lines.append(f"- {r['test']}: {r['value']} {r.get('unit', '')}")
     if context:
         lines.insert(0, "Optional background from the user (do not diagnose from it; use it only to make the explanation more relevant):\n" + context + "\n")
-    return ask_llm(EXPLAIN_PROMPT + "\n".join(lines))
+    note = f"\nWrite the entire answer in {language}. Keep numbers, units, test names and abbreviations unchanged.\n"
+    return ask_llm(EXPLAIN_PROMPT + note + "\n".join(lines))

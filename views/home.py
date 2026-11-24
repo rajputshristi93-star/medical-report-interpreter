@@ -1,59 +1,88 @@
 import streamlit as st
 
-from ui import footer
+from i18n import t
+from pagecss import inject_page_css
+from resultcards import card_html, hero_html, order_key
+from rules import add_status
+from theme import render_footer
 
-st.markdown("""
-<div class="hero">
-<div class="hero-grid">
-<div>
-<span class="pill">AI-powered · PDF and photo support</span>
-<h1>Understand your lab results in plain language</h1>
-<p class="lead">Upload a lab report or a clear photo of it. Get a color-coded table and a simple explanation you can take to your doctor.</p>
-</div>
-<div class="demo">
-<b>Example result (sample data)</b>
-<table>
-<tr><td>Hemoglobin</td><td>11.8 g/dL</td><td><span class="badge b-low">LOW</span></td></tr>
-<tr><td>WBC Count</td><td>9.2 ×10³/µL</td><td><span class="badge b-normal">NORMAL</span></td></tr>
-<tr><td>Platelets</td><td>420 ×10³/µL</td><td><span class="badge b-high">HIGH</span></td></tr>
-</table>
-<p class="note">Example only. Not a real patient.</p>
-</div>
-</div>
+SAMPLE = [
+    {"test": "Hemoglobin", "value": 10.8, "unit": "g/dL", "ref_low": 13, "ref_high": 17},
+    {"test": "WBC count", "value": 7.1, "unit": "10^3/uL", "ref_low": 4, "ref_high": 10},
+    {"test": "Platelets", "value": 318, "unit": "10^3/uL", "ref_low": 150, "ref_high": 410},
+    {"test": "Creatinine", "value": 1.41, "unit": "mg/dL", "ref_low": 0.6, "ref_high": 1.25},
+    {"test": "Sodium", "value": 139, "unit": "mmol/L", "ref_low": 137, "ref_high": 145},
+    {"test": "LDL cholesterol", "value": 168, "unit": "mg/dL", "ref_low": 50, "ref_high": 130},
+    {"test": "HOMA-IR (Insulin Resistance)", "value": 6.54, "unit": "score", "ref_low": 0.5, "ref_high": 1.9},
+]
+
+
+inject_page_css()
+
+
+def rrow(name, status, width, color):
+    cls = {"low": "p-low", "normal": "p-ok", "high": "p-high"}[status]
+    return (f'<div class="rrow"><div class="lab"><span>{name}</span><span class="pill {cls}">{t("status." + status)}</span></div>'
+            f'<div class="rbar"><i style="--w:{width}%;background:{color}"></i></div></div>')
+
+
+AMBER, GREEN, RED = ("linear-gradient(90deg,#F5A623,#FFC24B)", "linear-gradient(90deg,#2FBF71,#7BE0A6)",
+                     "linear-gradient(90deg,#E5484D,#FF8FA3)")
+st.markdown(f"""
+<div class="hero3d">
+  <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
+  <div class="hero-copy fade-up">
+    <div class="t-eyebrow">{t("hero.eyebrow")}</div>
+    <div class="t-display">{t("hero.title1")}<br><span class="grad">{t("hero.title2")}</span></div>
+    <p class="t-lead">{t("hero.lead")}</p>
+  </div>
+  <div class="report3d fade-up d2">
+    <div class="ttl"><span>🧪 {t("hero.card_title")}</span><span class="t-small">{t("hero.example")}</span></div>
+    {rrow(t("ex.hb"), "low", 38, AMBER)}{rrow(t("ex.wbc"), "normal", 62, GREEN)}
+    {rrow(t("ex.plt"), "normal", 55, GREEN)}{rrow(t("ex.ldl"), "high", 90, RED)}
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-if st.button("Interpret my report →", type="primary"):
-    st.switch_page("views/analyze.py")
+a, b, _ = st.columns([1.7, 1.4, 2.9])
+with a, st.container(key="cta"):
+    st.page_link("views/analyze.py", label=t("hero.cta1"), icon="🧪")
+with b, st.container(key="cta2"):
+    st.page_link("views/doctors.py", label=t("hero.cta2"), icon="📍")
 
-st.markdown("""
-<div class="section-title">How it works</div>
-<p class="section-sub">Three steps, no medical background needed.</p>
-<div class="grid">
-<div class="card"><div class="step-num">1</div><h4>Upload your report</h4><p>PDF, PNG or JPG up to 10 MB. Text PDFs and scans are both supported.</p></div>
-<div class="card"><div class="step-num">2</div><h4>AI reads the results</h4><p>Each test, value and reference range is extracted, then checked against the report.</p></div>
-<div class="card"><div class="step-num">3</div><h4>Get a clear explanation</h4><p>A color-coded table, a plain-language summary and questions to ask your doctor.</p></div>
-</div>
-<div class="section-title">What you get</div>
-<p class="section-sub">Built to be careful with medical numbers.</p>
-<div class="grid">
-<div class="card"><h4>📄 PDF and photo upload</h4><p>Read lab reports from text PDFs, scanned PDFs, screenshots and photos.</p></div>
-<div class="card"><h4>🎨 Color-coded status</h4><p>Normal, low and high results are easy to spot at a glance.</p></div>
-<div class="card"><h4>✅ Cross-checking</h4><p>Extracted numbers are matched to the report text. Anything that does not match is marked, not guessed.</p></div>
-<div class="card"><h4>🚨 Extreme value alerts</h4><p>Values far outside the range are highlighted with a prompt to contact a doctor.</p></div>
-<div class="card"><h4>🗣️ Plain language</h4><p>Short explanations of what each flagged test measures, without diagnosing.</p></div>
-<div class="card"><h4>🩺 Questions for your doctor</h4><p>Specific questions to bring to your appointment.</p></div>
-</div>
-<div class="section-title">Common questions</div>
-""", unsafe_allow_html=True)
 
-with st.expander("Does this diagnose anything?"):
-    st.write("No. It explains what the numbers on your report mean in general terms. Only a doctor who knows your history can interpret them for you.")
-with st.expander("Is my report stored?"):
-    st.write("Your file is processed in memory and is not saved by this app. The file or its extracted text is sent to an AI service to produce the results.")
-with st.expander("Which files can I upload?"):
-    st.write("PDF, PNG or JPG up to 10 MB. Lab test results (blood, urine, lipid, thyroid and similar) are supported. X-ray, ultrasound and ECG reports are not yet.")
-with st.expander("How accurate is it?"):
-    st.write("It can make mistakes, especially with blurry photos. Values read from images cannot be cross-checked automatically, so always compare them with your original report.")
+def heading(eyebrow, title, note=""):
+    st.markdown(f'<div class="t-eyebrow" style="margin-top:2.2rem">{eyebrow}</div><div class="t-h2" style="margin-top:.2rem">{title}</div>'
+                + (f'<p class="t-small">{note}</p>' if note else ""), unsafe_allow_html=True)
 
-footer()
+
+def card(col, icon, tone, key, delay="", number=""):
+    col.markdown(f'<div class="card3d {delay}"><span class="step-no">{number}</span><div class="icon3d {tone}">{icon}</div>'
+                 f'<h4>{t(key + ".title")}</h4><p>{t(key + ".text")}</p></div>', unsafe_allow_html=True)
+
+
+heading(t("how.eyebrow"), t("how.title"))
+c = st.columns(3)
+card(c[0], "📤", "", "step1", "d1", "01")
+card(c[1], "🔎", "violet", "step2", "d2", "02")
+card(c[2], "💡", "amber", "step3", "d3", "03")
+
+heading(t("feat.eyebrow"), t("feat.title"))
+r1, r2 = st.columns(3), st.columns(3)
+card(r1[0], "🎨", "", "f1", "d1")
+card(r1[1], "📊", "violet", "f2", "d2")
+card(r1[2], "🗣️", "amber", "f3", "d3")
+card(r2[0], "🌿", "", "f4", "d1")
+card(r2[1], "📍", "rose", "f5", "d2")
+card(r2[2], "🔒", "violet", "f6", "d3")
+
+heading(t("demo.eyebrow"), t("demo.title"), t("demo.note"))
+demo = add_status([dict(x) for x in SAMPLE])
+st.markdown(hero_html(demo), unsafe_allow_html=True)
+st.markdown('<div class="rcg">' + "".join(card_html(r, i) for i, r in enumerate(sorted(demo, key=order_key)[:4])) + "</div>", unsafe_allow_html=True)
+
+st.markdown(f'<div class="t-h2">{t("faq.title")}</div>', unsafe_allow_html=True)
+for n in range(1, 5):
+    with st.expander(t(f"faq{n}.q")):
+        st.write(t(f"faq{n}.a"))
+render_footer()
